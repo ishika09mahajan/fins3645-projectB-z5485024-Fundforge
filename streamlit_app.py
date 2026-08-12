@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
-import plotly.io as pio
+import plotly.express as px
 
 ROOT = pathlib.Path(__file__).resolve().parent
 DATA = ROOT / "results" / "data"
@@ -25,15 +25,6 @@ TABLES = ROOT / "results" / "tables"
 
 FAM_COLOR = {"equity": "#2563eb", "crypto": "#f59e0b", "combined": "#10b981"}
 BASE_C, TILT_C = "#94a3b8", "#7c3aed"
-
-pio.templates["ff"] = go.layout.Template(layout=dict(
-    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-    font=dict(color="#cbd5e1", size=12),
-    colorway=["#7c3aed", "#2563eb", "#10b981", "#f59e0b", "#ef4444", "#06b6d4"],
-    xaxis=dict(gridcolor="rgba(148,163,184,.15)", zerolinecolor="rgba(148,163,184,.25)"),
-    yaxis=dict(gridcolor="rgba(148,163,184,.15)", zerolinecolor="rgba(148,163,184,.25)"),
-    legend=dict(bgcolor="rgba(0,0,0,0)")))
-pio.templates.default = "ff"
 
 st.set_page_config(page_title="FundForge", page_icon="🔥", layout="wide",
                    initial_sidebar_state="expanded")
