@@ -24,7 +24,7 @@ def build_funds():
     cr_ret = features.daily_returns_wide(cr)
     combined = features.combined_returns_panel(eq, cr)
     families = {"equity": (eq_ret, 252), "crypto": (cr_ret, 365), "combined": (combined, 252)}
-    fund_returns, fund_weights, rows = {}, {}, []
+    fund_returns, fund_weights, rows, wh_rows = {}, {}, [], []
     for fam, (R, ppy) in families.items():
         for m in portfolios.METHODS:
             out = portfolios.oos_backtest(R, method=m, window=252, cov_method="lw",
@@ -33,11 +33,18 @@ def build_funds():
             fund_returns[name] = out["daily_net"]
             fund_weights[name] = out["weights"].iloc[-1]
             rows.append({"fund": name, **out["metrics"]})
+            if fam == "equity":                       # weights history for the equity methods
+                w = out["weights"].copy()
+                w.index.name = "date"
+                w = w.reset_index().melt(id_vars="date", var_name="ticker", value_name="weight")
+                w["method"] = m
+                wh_rows.append(w)
             print(f"  built {name}")
     perf = pd.DataFrame(rows)
     eq[["ticker", "sector"]].drop_duplicates().to_csv(DATA / "ticker_sector.csv", index=False)
     pd.DataFrame(fund_returns).to_csv(DATA / "fund_returns.csv")
     pd.DataFrame(fund_weights).to_csv(DATA / "fund_weights.csv")
+    pd.concat(wh_rows, ignore_index=True).to_csv(DATA / "weights_history_equity.csv", index=False)
     perf.to_csv(TABLES / "performance_metrics.csv", index=False)
     return perf
 

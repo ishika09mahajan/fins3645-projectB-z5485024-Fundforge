@@ -158,6 +158,39 @@ def fig_sentiment_coverage():
     ax.set_ylim(0, 105)
     fig.savefig(FIGS / "fig_sentiment_coverage.png"); plt.close(fig)
 
+def fig_drawdown():
+    r = pd.read_csv(DATA / "fund_returns.csv", index_col=0, parse_dates=True)
+    funds = [f for f in ["equity_equal_weight", "combined_max_sharpe", "equity_risk_parity"]
+             if f in r.columns]
+    fig, ax = plt.subplots(figsize=(11, 5))
+    for f in funds:
+        s = r[f].dropna(); w = (1 + s).cumprod(); dd = (w / w.cummax() - 1) * 100
+        ax.plot(dd.index, dd.values, lw=1.5, label=f)
+    ax.axhline(0, color="black", lw=0.8, alpha=0.5)
+    ax.set_ylabel("drawdown (%)")
+    ax.set_title("Drawdown over time (underwater curve)")
+    ax.legend(frameon=False, fontsize=9)
+    fig.savefig(FIGS / "fig_drawdown.png"); plt.close(fig)
+
+def fig_weights_over_time():
+    wh = pd.read_csv(DATA / "weights_history_equity.csv", parse_dates=["date"])
+    fig, axes = plt.subplots(1, 2, figsize=(15, 5))
+    mv = (wh[wh["method"] == "min_variance"]
+          .pivot(index="date", columns="ticker", values="weight").fillna(0))
+    top = mv.mean().sort_values(ascending=False).head(8).index
+    plot = mv[top].copy(); plot["other"] = 1 - plot.sum(axis=1)
+    axes[0].stackplot(plot.index, [plot[c] for c in plot.columns], labels=list(plot.columns))
+    axes[0].set_title("Weights over time: equity minimum variance (top 8 + other)")
+    axes[0].set_ylabel("weight"); axes[0].set_ylim(0, 1)
+    axes[0].legend(fontsize=7, ncol=3, loc="upper center", frameon=False)
+    for m in ["equal_weight", "min_variance", "max_sharpe", "risk_parity"]:
+        sub = (wh[wh["method"] == m]
+               .pivot(index="date", columns="ticker", values="weight").fillna(0))
+        effn = 1.0 / (sub ** 2).sum(axis=1)
+        axes[1].plot(effn.index, effn.values, lw=1.6, label=m)
+    axes[1].set_title("Effective number of holdings over time, by method")
+    axes[1].set_ylabel("1 / sum(w^2)"); axes[1].legend(fontsize=8, frameon=False)
+    fig.savefig(FIGS / "fig_weights_over_time.png"); plt.close(fig)
 
 def main():
     fig_equity_curves(); print("  fig_equity_curves")
@@ -169,6 +202,8 @@ def main():
     fig_overlay_drawdown(); print("  fig_overlay_drawdown")
     fig_overlay_equity_curve(); print("  fig_overlay_equity_curve")
     fig_sentiment_coverage(); print("  fig_sentiment_coverage")
+    fig_drawdown(); print("  fig_drawdown")
+    fig_weights_over_time(); print("  fig_weights_over_time")
     print("\nSaved 9 figures -> results/figures/")
 
 
