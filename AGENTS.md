@@ -8,6 +8,10 @@ Greed index, fuses that sentiment into the funds as a look-ahead-safe tilt, and
 serves it all through a Streamlit dashboard that reads precomputed results.
 Data source and full requirements: see PROJECT_BRIEF.md and context/.
 
+## Live links
+- Deployed app: https://ishika09mahajan-fins3645-projectb-z5485024-streamlit-app-ng0buy.streamlit.app
+- Public repository: https://github.com/ishika09mahajan/fins3645-projectB-z5485024-Fundforge
+
 ## Layout
 - src/etl.py         Station 1 - load and clean equities, crypto, news
 - src/features.py    Station 2 - return panels and headline assembly
