@@ -117,13 +117,9 @@ with tabs[0]:
     st.subheader("Risk and return")
     d = perf_f.copy()
     d["family"] = d["fund"].apply(fam_of)
-    fig = px.scatter(d, x="ann_vol", y="ann_return", color="family",
-                     hover_name="fund",
-                     hover_data={"sharpe": ":.2f", "max_drawdown": ":.2%",
-                                 "ann_vol": ":.2%", "ann_return": ":.2%", "family": False},
+    fig = px.scatter(d, x="ann_vol", y="ann_return", color="family", text="fund",
                      color_discrete_map=FAM_COLOR, height=520,
                      labels={"ann_vol": "annualised volatility", "ann_return": "annualised return"})
-    fig.update_traces(marker=dict(size=13))
     fig.update_traces(textposition="top center", textfont_size=9, marker=dict(size=13))
     fig.update_layout(margin=dict(l=10, r=10, t=10, b=10))
     st.plotly_chart(fig, width="stretch")
