@@ -68,5 +68,5 @@ def build_sector_index(scored: pd.DataFrame, smooth_window: int = 21,
     full = pd.date_range(raw.index.min(), raw.index.max(), freq="D")
     raw = raw.reindex(full).ffill()
     z = expanding_zscore(raw)
-    smoothed = z.rolling(smooth_window, min_periods=1).mean()
+    smoothed = z.rolling(smooth_window, min_periods=1).mean().shift(1)
     return {"raw_100": raw, "zscore": z, "smoothed": smoothed}

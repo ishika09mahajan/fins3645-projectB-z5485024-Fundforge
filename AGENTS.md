@@ -1,4 +1,4 @@
-# AGENTS.md - YOUR agent instructions (replace this placeholder)
+# AGENTS.md - Agent guide for the FundForge Part B project
 
 ## What this is
 A multi-asset systematic fund platform (FINS3645 Part B). It builds four portfolio

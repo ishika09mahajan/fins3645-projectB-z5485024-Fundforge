@@ -1,10 +1,6 @@
 """Generate the Part B figures from the saved results/ CSVs.
 
     python scripts/make_figures.py
-
-Reads results/data and results/tables (produced by run_part_b.py) and writes
-PNGs to results/figures. The sentiment-coverage figure re-scores the headlines
-with base VADER vs the finance-tuned analyzer to show the innovation's effect.
 """
 import sys
 import pathlib
@@ -16,6 +12,8 @@ import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
+import matplotlib.dates as mdates  # noqa: E402
+from adjustText import adjust_text  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DATA = ROOT / "results" / "data"
@@ -23,7 +21,6 @@ TABLES = ROOT / "results" / "tables"
 FIGS = ROOT / "results" / "figures"
 FIGS.mkdir(parents=True, exist_ok=True)
 
-# ---- house style ----
 plt.rcParams.update({
     "figure.dpi": 120, "savefig.dpi": 150, "savefig.bbox": "tight",
     "font.size": 11, "axes.titlesize": 13, "axes.titleweight": "bold",
@@ -38,35 +35,44 @@ BASE_C, TILT_C = "#94a3b8", "#6d28d9"
 def _fam(name): return name.split("_")[0]
 
 
+def _datefmt(ax):
+    loc = mdates.AutoDateLocator(minticks=4, maxticks=8)
+    ax.xaxis.set_major_locator(loc)
+    ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(loc))
+
+
 def fig_equity_curves():
     r = pd.read_csv(DATA / "fund_returns.csv", index_col=0, parse_dates=True)
-    fams = ["equity", "crypto", "combined"]
-    fig, axes = plt.subplots(1, 3, figsize=(15, 4.6), sharey=False)
-    for ax, fam in zip(axes, fams):
-        cols = [c for c in r.columns if c.startswith(fam)]
-        for c in cols:
+    fig, axes = plt.subplots(1, 3, figsize=(15, 4.6))
+    for ax, fam in zip(axes, ["equity", "crypto", "combined"]):
+        for c in [c for c in r.columns if c.startswith(fam)]:
             g = (1 + r[c].dropna()).cumprod()
-            ax.plot(g.index, g.values, lw=1.6, label=c.replace(fam + "_", ""))
+            ax.plot(g.index, g.values, lw=1.5, label=c.replace(fam + "_", ""))
         ax.set_title(f"{fam.capitalize()} funds"); ax.set_ylabel("growth of $1")
-        ax.legend(fontsize=8, frameon=False)
+        ax.legend(fontsize=8, frameon=False); _datefmt(ax)
     fig.suptitle("Out-of-sample growth of $1 by fund family", fontweight="bold")
     fig.savefig(FIGS / "fig_equity_curves.png"); plt.close(fig)
 
 
 def fig_risk_return():
     m = pd.read_csv(TABLES / "performance_metrics.csv")
-    fig, ax = plt.subplots(figsize=(8, 6))
+    fig, ax = plt.subplots(figsize=(10, 8))
+    texts = []
     for _, row in m.iterrows():
         fam = _fam(row["fund"])
         ax.scatter(row["ann_vol"], row["ann_return"], s=90, color=FAM_COLOR[fam],
                    edgecolor="white", zorder=3)
-        ax.annotate(row["fund"].replace(fam + "_", ""), (row["ann_vol"], row["ann_return"]),
-                    fontsize=7.5, xytext=(5, 4), textcoords="offset points")
+        texts.append(ax.text(row["ann_vol"], row["ann_return"],
+                             f"{fam[:2]} " + row["fund"].replace(fam + "_", ""),
+                             fontsize=8))
     for fam, c in FAM_COLOR.items():
         ax.scatter([], [], color=c, label=fam)
+    adjust_text(texts, ax=ax, expand=(2.2, 2.6),
+                force_text=(0.6, 1.0), force_static=(0.3, 0.6),
+                arrowprops=dict(arrowstyle="-", color="#94a3b8", lw=0.6))
     ax.set_xlabel("annualised volatility"); ax.set_ylabel("annualised return")
     ax.set_title("Risk and return of the 12 funds (out-of-sample)")
-    ax.legend(frameon=False)
+    ax.legend(frameon=False, loc="upper left")
     fig.savefig(FIGS / "fig_risk_return.png"); plt.close(fig)
 
 
@@ -79,6 +85,40 @@ def fig_sharpe_bars():
     fig.savefig(FIGS / "fig_sharpe_bars.png"); plt.close(fig)
 
 
+def fig_drawdown():
+    r = pd.read_csv(DATA / "fund_returns.csv", index_col=0, parse_dates=True)
+    funds = [f for f in ["equity_equal_weight", "combined_max_sharpe", "equity_risk_parity"]
+             if f in r.columns]
+    fig, ax = plt.subplots(figsize=(11, 5))
+    for f in funds:
+        s = r[f].dropna(); w = (1 + s).cumprod(); dd = (w / w.cummax() - 1) * 100
+        ax.plot(dd.index, dd.values, lw=1.5, label=f)
+    ax.axhline(0, color="black", lw=0.8, alpha=0.5)
+    ax.set_ylabel("drawdown (%)"); ax.set_title("Drawdown over time (underwater curve)")
+    ax.legend(frameon=False, fontsize=9); _datefmt(ax)
+    fig.savefig(FIGS / "fig_drawdown.png"); plt.close(fig)
+
+
+def fig_weights_over_time():
+    wh = pd.read_csv(DATA / "weights_history_equity.csv", parse_dates=["date"])
+    fig, axes = plt.subplots(1, 2, figsize=(15, 5))
+    mv = (wh[wh["method"] == "min_variance"]
+          .pivot(index="date", columns="ticker", values="weight").fillna(0))
+    top = mv.mean().sort_values(ascending=False).head(8).index
+    plot = mv[top].copy(); plot["other"] = 1 - plot.sum(axis=1)
+    axes[0].stackplot(plot.index, [plot[c] for c in plot.columns], labels=list(plot.columns))
+    axes[0].set_title("Weights over time: equity minimum variance (top 8 + other)")
+    axes[0].set_ylabel("weight"); axes[0].set_ylim(0, 1)
+    axes[0].legend(fontsize=7, ncol=3, loc="upper center", frameon=False); _datefmt(axes[0])
+    for m in ["equal_weight", "min_variance", "max_sharpe", "risk_parity"]:
+        sub = (wh[wh["method"] == m]
+               .pivot(index="date", columns="ticker", values="weight").fillna(0))
+        axes[1].plot(sub.index, 1.0 / (sub ** 2).sum(axis=1), lw=1.6, label=m)
+    axes[1].set_title("Effective number of holdings over time, by method")
+    axes[1].set_ylabel("1 / sum(w^2)"); axes[1].legend(fontsize=8, frameon=False); _datefmt(axes[1])
+    fig.savefig(FIGS / "fig_weights_over_time.png"); plt.close(fig)
+
+
 def fig_sector_fear_greed():
     fg = pd.read_csv(DATA / "sector_fear_greed_100.csv", index_col=0, parse_dates=True)
     fig, ax = plt.subplots(figsize=(11, 5))
@@ -87,7 +127,7 @@ def fig_sector_fear_greed():
     ax.axhline(50, color="black", lw=0.8, ls="--", alpha=0.6)
     ax.set_ylabel("Fear & Greed (0-100, 21d smooth)")
     ax.set_title("Sector news sentiment - raw Fear & Greed index")
-    ax.legend(fontsize=8, ncol=2, frameon=False)
+    ax.legend(fontsize=8, ncol=2, frameon=False); _datefmt(ax)
     fig.savefig(FIGS / "fig_sector_fear_greed.png"); plt.close(fig)
 
 
@@ -99,13 +139,12 @@ def fig_sector_zscore():
     ax.axhline(0, color="black", lw=0.8, alpha=0.6)
     ax.set_ylabel("standardised sentiment (z)")
     ax.set_title("Sector sentiment - standardised signal (expanding window, no look-ahead)")
-    ax.legend(fontsize=8, ncol=2, frameon=False)
+    ax.legend(fontsize=8, ncol=2, frameon=False); _datefmt(ax)
     fig.savefig(FIGS / "fig_sector_zscore.png"); plt.close(fig)
 
 
 def fig_overlay_sharpe():
-    f = pd.read_csv(TABLES / "fusion_metrics.csv")
-    x = np.arange(len(f)); w = 0.38
+    f = pd.read_csv(TABLES / "fusion_metrics.csv"); x = np.arange(len(f)); w = 0.38
     fig, ax = plt.subplots(figsize=(11, 5.5))
     ax.bar(x - w / 2, f["base_sharpe"], w, label="base", color=BASE_C)
     ax.bar(x + w / 2, f["tilt_sharpe"], w, label="+ sentiment tilt", color=TILT_C)
@@ -116,8 +155,7 @@ def fig_overlay_sharpe():
 
 
 def fig_overlay_drawdown():
-    f = pd.read_csv(TABLES / "fusion_metrics.csv")
-    x = np.arange(len(f)); w = 0.38
+    f = pd.read_csv(TABLES / "fusion_metrics.csv"); x = np.arange(len(f)); w = 0.38
     fig, ax = plt.subplots(figsize=(11, 5.5))
     ax.bar(x - w / 2, f["base_max_dd"], w, label="base", color=BASE_C)
     ax.bar(x + w / 2, f["tilt_max_dd"], w, label="+ sentiment tilt", color=TILT_C)
@@ -129,19 +167,18 @@ def fig_overlay_drawdown():
 
 def fig_overlay_equity_curve(fund="combined_max_sharpe"):
     fr = pd.read_csv(DATA / "fusion_returns.csv", index_col=0, parse_dates=True)
-    bcol, tcol = f"{fund}__base", f"{fund}__tilt"
-    if bcol not in fr.columns:
-        fund = fr.columns[0].split("__")[0]; bcol, tcol = f"{fund}__base", f"{fund}__tilt"
+    b, t = f"{fund}__base", f"{fund}__tilt"
+    if b not in fr.columns:
+        fund = fr.columns[0].split("__")[0]; b, t = f"{fund}__base", f"{fund}__tilt"
     fig, ax = plt.subplots(figsize=(11, 5))
-    ax.plot((1 + fr[bcol].dropna()).cumprod(), color=BASE_C, lw=1.8, label="base")
-    ax.plot((1 + fr[tcol].dropna()).cumprod(), color=TILT_C, lw=1.8, label="+ sentiment tilt")
+    ax.plot((1 + fr[b].dropna()).cumprod(), color=BASE_C, lw=1.8, label="base")
+    ax.plot((1 + fr[t].dropna()).cumprod(), color=TILT_C, lw=1.8, label="+ sentiment tilt")
     ax.set_ylabel("growth of $1"); ax.set_title(f"Sentiment overlay on {fund}")
-    ax.legend(frameon=False)
+    ax.legend(frameon=False); _datefmt(ax)
     fig.savefig(FIGS / "fig_overlay_equity_curve.png"); plt.close(fig)
 
 
 def fig_sentiment_coverage():
-    """Re-score headlines with base VADER vs finance-tuned to show the innovation."""
     from src import etl, sentiment
     news = etl.load_clean_news()
     base = sentiment.SentimentIntensityAnalyzer()
@@ -158,53 +195,14 @@ def fig_sentiment_coverage():
     ax.set_ylim(0, 105)
     fig.savefig(FIGS / "fig_sentiment_coverage.png"); plt.close(fig)
 
-def fig_drawdown():
-    r = pd.read_csv(DATA / "fund_returns.csv", index_col=0, parse_dates=True)
-    funds = [f for f in ["equity_equal_weight", "combined_max_sharpe", "equity_risk_parity"]
-             if f in r.columns]
-    fig, ax = plt.subplots(figsize=(11, 5))
-    for f in funds:
-        s = r[f].dropna(); w = (1 + s).cumprod(); dd = (w / w.cummax() - 1) * 100
-        ax.plot(dd.index, dd.values, lw=1.5, label=f)
-    ax.axhline(0, color="black", lw=0.8, alpha=0.5)
-    ax.set_ylabel("drawdown (%)")
-    ax.set_title("Drawdown over time (underwater curve)")
-    ax.legend(frameon=False, fontsize=9)
-    fig.savefig(FIGS / "fig_drawdown.png"); plt.close(fig)
-
-def fig_weights_over_time():
-    wh = pd.read_csv(DATA / "weights_history_equity.csv", parse_dates=["date"])
-    fig, axes = plt.subplots(1, 2, figsize=(15, 5))
-    mv = (wh[wh["method"] == "min_variance"]
-          .pivot(index="date", columns="ticker", values="weight").fillna(0))
-    top = mv.mean().sort_values(ascending=False).head(8).index
-    plot = mv[top].copy(); plot["other"] = 1 - plot.sum(axis=1)
-    axes[0].stackplot(plot.index, [plot[c] for c in plot.columns], labels=list(plot.columns))
-    axes[0].set_title("Weights over time: equity minimum variance (top 8 + other)")
-    axes[0].set_ylabel("weight"); axes[0].set_ylim(0, 1)
-    axes[0].legend(fontsize=7, ncol=3, loc="upper center", frameon=False)
-    for m in ["equal_weight", "min_variance", "max_sharpe", "risk_parity"]:
-        sub = (wh[wh["method"] == m]
-               .pivot(index="date", columns="ticker", values="weight").fillna(0))
-        effn = 1.0 / (sub ** 2).sum(axis=1)
-        axes[1].plot(effn.index, effn.values, lw=1.6, label=m)
-    axes[1].set_title("Effective number of holdings over time, by method")
-    axes[1].set_ylabel("1 / sum(w^2)"); axes[1].legend(fontsize=8, frameon=False)
-    fig.savefig(FIGS / "fig_weights_over_time.png"); plt.close(fig)
 
 def main():
-    fig_equity_curves(); print("  fig_equity_curves")
-    fig_risk_return(); print("  fig_risk_return")
-    fig_sharpe_bars(); print("  fig_sharpe_bars")
-    fig_sector_fear_greed(); print("  fig_sector_fear_greed")
-    fig_sector_zscore(); print("  fig_sector_zscore")
-    fig_overlay_sharpe(); print("  fig_overlay_sharpe")
-    fig_overlay_drawdown(); print("  fig_overlay_drawdown")
-    fig_overlay_equity_curve(); print("  fig_overlay_equity_curve")
-    fig_sentiment_coverage(); print("  fig_sentiment_coverage")
-    fig_drawdown(); print("  fig_drawdown")
-    fig_weights_over_time(); print("  fig_weights_over_time")
-    print("\nSaved 9 figures -> results/figures/")
+    for fn in [fig_equity_curves, fig_risk_return, fig_sharpe_bars, fig_drawdown,
+               fig_weights_over_time, fig_sector_fear_greed, fig_sector_zscore,
+               fig_overlay_sharpe, fig_overlay_drawdown, fig_overlay_equity_curve,
+               fig_sentiment_coverage]:
+        fn(); print(f"  {fn.__name__}")
+    print("\nSaved figures -> results/figures/")
 
 
 if __name__ == "__main__":
