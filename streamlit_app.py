@@ -124,7 +124,7 @@ with tabs[0]:
                      color_discrete_map=FAM_COLOR, height=520,
                      labels={"ann_vol": "annualised volatility", "ann_return": "annualised return"})
     fig.update_traces(marker=dict(size=13))
-
+    fig.update_traces(textposition="top center", textfont_size=9, marker=dict(size=13))
     fig.update_layout(margin=dict(l=10, r=10, t=10, b=10))
     st.plotly_chart(fig, width="stretch")
 
